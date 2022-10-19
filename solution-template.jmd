@@ -58,7 +58,7 @@ T = 1:length(hours)
 ## Problem 1.2
 ```julia
 #To minimize the cost, we first define the objective as the sum of all costs, which are the investment cost, the operation costs, and the non-served energy cost.
-@objective(dispatch, Min, sum(investment_cost.*x) + sum(0*y[1,:] .+ 22*y[2,:] .+ 35*y[3,:] .+ 45*y[4,:] .+ 0*y[5,:] .+ 0*y[6,:])*365 + 1000*sum(nse)*365)
+@objective(dispatch, Min, sum(investment_cost.*x) + sum(0*y[1,:] + 22*y[2,:] + 35*y[3,:] + 45*y[4,:] + 0*y[5,:] + 0*y[6,:])*365 + 1000*sum(nse)*365)
 ```
 ## Problem 1.3
 The constraints in this problem are demands of power generation, capacity and availbility of generators, and 
@@ -88,15 +88,15 @@ objective_value(dispatch)
 ## Problem 1.5
 ```julia
 generation = [sum(value.(y).data[g,:].*hours) for g in G]
-results = DataFrame("Name" => generators, "Dispatched Power (MW)" => generation)
+results = DataFrame("Name" => generators, "Capacity (MW)" => value.(x).data, "Dispatched Power (MW)" => generation)
 ```
 ## Problem 1.6
 ```julia
 generation = value.(y).data
 plot(generation', 
 label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", 
-color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, size = (1000,1000), left_margin=5mm, bottom_margin=5mm, legend = :topright, legendfontsize=8, tick_size=13, guidefontsize=14)
-areaplot(generation', label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :topleft)
+color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, size = (700,700), left_margin=5mm, bottom_margin=5mm, legend = :topright, tick_size=10, guidefontsize=10)
+areaplot(generation', label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :topright, legendfontsize = 8)
 plot!(demand, color=:red, label = "demand", linestyle = :dash, linewidth = 3)
 ```
 Takeaways: 
@@ -112,27 +112,34 @@ We now need to consider the CO2 emission, which the NY State legislative sets th
 ```
 ## Problem 2.2
 ```julia
+set_silent(dispatch)
 optimize!(dispatch)
 objective_value(dispatch)
 ```
 ## Problem 2.3
 ```julia
 generation = [sum(value.(y).data[g,:].*hours) for g in G]
-results = DataFrame("Name" => generators, "Dispatched Power (MW)" => generation)
+results = DataFrame("Name" => generators, "Capacity (MW)" => value.(x).data, "Dispatched Power (MW)" => generation)
 ```
 ## Problem 2.4
 ```julia
 generation = value.(y).data
 plot!(generation', 
 label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
-color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, size = (1000,1000), left_margin=5mm, bottom_margin=5mm, legend = :topright, legendfontsize =8, tick_size=13, guidefontsize=14)
-areaplot!(generation', label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :topleft)
+color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, size = (700,700), left_margin=5mm, bottom_margin=5mm, legend = :topright, legendfontsize=8, tick_size=10, guidefontsize=10)
+areaplot(generation', label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :topright, legendfontsize=8)
 plot!(demand, color=:red, label = "demand", linestyle = :dash, linewidth = 3)
 ```
 
 ## Problem 2.5
 ```julia
+@constraint(dispatch, CO2, sum(co2_emisssions*y)<= ((1.5*(10^6) + 1000)/365)) #CO2 emission of all generators must not exceed limit of 1.5 Mt/year
+set_silent(dispatch)
+optimize!(dispatch)
+objective_value(dispatch)
 
+generation = [sum(value.(y).data[g,:].*hours) for g in G]
+results = DataFrame("Name" => generators, "Capacity (MW)" => value.(x).data, "Dispatched Power (MW)" => generation)
 ```
 
 # References
