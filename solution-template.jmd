@@ -42,6 +42,7 @@ gr()
 expansion_model = Model(HiGHS.Optimizer)
 ```
 ## Problem 1.1
+The decision variables are generator capacity, production of energy, and the non-served energy amount
 ```julia
 
 generators = ["geothermal", "coal", "CCGT", "CT", "wind", "solar"]
@@ -51,7 +52,7 @@ T = 1:length(hours)
 
 @variable(expansion_model, x[G] >= 0) #capacity as a function of type of generator G
 @variable(expansion_model, y[G,T] >= 0) #production as a function of type of generator G and time T 
-@variable(expansion_model, nse[T] >= 0) #non-served energy 
+@variable(expansion_model, nse[T] >= 0) #non-served energy as a function of time
 
 ```
 
@@ -59,7 +60,7 @@ T = 1:length(hours)
 ```julia
 
 #To minimize the cost, we first define the objective as the sum of all costs, which are the investment cost, the operation costs, and the non-served energy cost.
-@objective(expansion_model, Min, investment_cost*x + sum(demand*op_cost*y) + 9000*nse)
+@objective(expansion_model, Min, investment_cost.*x + sum(demand*op_cost*y) + 9000*nse)
 
 ```
 ## Problem 1.3
@@ -75,8 +76,8 @@ avail[3, :] .= thermal_cf[3]
 avail[4, :] .= thermal_cf[4]
 avail[5, :]  = wind_cf
 avail[6, :]  = solar_cf
-@constraint(expansion_model, availability[g in G, t in T], y[g, t] <= avail[g,t]*x[g])
-@constraint(expansion_model, load[t in T], sum(y[:, t]+nse[t]) == demand[t])
+@constraint(expansion_model, availability[g in G, t in T], y[g, t] <= avail[g,t]*x[g]) #capacity availbility cannot exceed the given generator capacity 
+@constraint(expansion_model, load[t in T], sum(y[:, t]+nse[t]) == demand[t]) #sum of production and non-served energy must equal to the demand
 
 
 ```
@@ -87,41 +88,75 @@ optimize!(expansion_model)
 
 ## Problem 1.5
 ```julia
-gen = value.(y).data
+production = value.(y).data
 results = DataFrame(
 "Name" => generators,
-"Generated Power (MW)" => gen
+"Generated Power (MW)" => production
 )
 ```
 ## Problem 1.6
-```julia
-gen = value.(y).data
 
-p = plot(gen', 
+```julia
+plot(production, 
 label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
-thickness_scaling = 2, linewidth = 2)
-)
+color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2)
 
 ```
+Takeaways: 
+The energy production from solar generators are the highest during middle of the day
 
 # Problem 2
-
-## Problem 2.1
 ```julia
+using JuMP
+using HiGHS
+using DataFrames
+using Plots
+gr()
+
+emission_model = Model(HiGHS.Optimizer)
+```
+## Problem 2.1
+We now need to consider the CO2 emission, which the NY State legislative sets the constraint that 
+
+```julia
+generators = ["geothermal", "coal", "CCGT", "CT", "wind", "solar"]
+
+G_CO2 = 1:length(generators)
+T_CO2 = 1:length(hours)
+
+@variable(emission_model, x[G_CO2] >= 0) #capacity as a function of type of generator G_CO2
+@variable(emission_model, y[G_CO2,T_CO2] >= 0) #production as a function of type of generator G_CO2 and time T_CO2
+@variable(emission_model, nse[T_CO2] >= 0) #non-served energy as a function of T_CO2
+
+#objective function
+@objective(expansion_model, Min, investment_cost.*x + sum(demand*op_cost*y) + 9000*nse)
+
+#constraints
+
+@constraint(emission_model, availability[g in G, t in T], y[g, t] <= avail[g,t]*x[g]) #constraints of the capacity availability
+@constraint(emission_model, load[t in T], sum(y[:, t]+nse[t]) == demand[t]) #production and non-served energy must equal to the demand
+@constraint(emission_model, CO2, sum(co2_emissions.*y) <= (1.5*10^6/365)) #CO2 emission of all generators must not exceed limit of 1.5 Mt/year
 
 ```
 ## Problem 2.2
 ```julia
-
+optimize!(emission_model)
 ```
 
 ## Problem 2.3
 ```julia
-
+production_CO2 = value.(y).data
+results_CO2 = DataFrame(
+"Name" => generators,
+"Generated Power (MW)" => production_CO2
+)
 ```
 
 ## Problem 2.4
 ```julia
+plot(production_CO2, 
+label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
+color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2)
 
 ```
 
