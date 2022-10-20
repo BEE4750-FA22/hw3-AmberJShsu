@@ -1,6 +1,6 @@
 ---
 title: "BEE 4750/5750 Homework 3"
-author: "Your name here (your netID here)"
+author: "Jing-Shan Hsu (jh2226)"
 date: `j import Dates; Dates.Date(Dates.now())`
 weave_options:
     term: true
@@ -43,7 +43,8 @@ using Measures
 dispatch = Model(HiGHS.Optimizer)
 ```
 ## Problem 1.1
-The decision variables are generator capacity, production of energy, and the non-served energy amount
+The decision variables are generator capacity, production of energy, and the non-served energy amount, 
+which are denoted as x, y, and nse.
 ```julia
 generators = ["geothermal", "coal", "CCGT", "CT", "wind", "solar"]
 
@@ -56,16 +57,21 @@ T = 1:length(hours)
 ```
 
 ## Problem 1.2
+To minimize the cost, we first define the objective as the sum of all costs, which are the investment cost, 
+the operation costs, and the non-served energy cost.
+
 ```julia
-#To minimize the cost, we first define the objective as the sum of all costs, which are the investment cost, the operation costs, and the non-served energy cost.
-@objective(dispatch, Min, sum(investment_cost.*x) + sum(0*y[1,:] + 22*y[2,:] + 35*y[3,:] + 45*y[4,:] + 0*y[5,:] + 0*y[6,:])*365 + 1000*sum(nse)*365)
+#the objective is to minimize total cost, which total cost = sum of investment cost + 
+#sum of operation cost of different generators at demand + sum of non-served energy penalized cost 
+#over a year
+@objective(dispatch, Min, sum(investment_cost.*x) + 
+sum(0*y[1,:] + 22*y[2,:] + 35*y[3,:] + 45*y[4,:] + 0*y[5,:] + 0*y[6,:])*365 + 1000*sum(nse)*365)
 ```
 ## Problem 1.3
-The constraints in this problem are demands of power generation, capacity and availbility of generators, and 
-
+The constraints in this problem are demands of power generation and the capacity availbility of generators.
 
 ```julia
-#availability factors
+#availability factors based on capacity factors of generator type
 avail = zeros(length(G), length(T));
 avail[1, :] .= thermal_cf[1];
 avail[2, :] .= thermal_cf[2];
@@ -73,8 +79,12 @@ avail[3, :] .= thermal_cf[3];
 avail[4, :] .= thermal_cf[4];
 avail[5, :]  = wind_cf;
 avail[6, :]  = solar_cf;
-@constraint(dispatch, availability[g in G, t in T], y[g, t] <= avail[g,t]*x[g]) #capacity availbility cannot exceed the given generator capacity 
-@constraint(dispatch, load[t in T], sum(y[:, t])+ sum(nse[t]) == demand[t]) #sum of production and non-served energy must equal to the demand
+
+#capacity availbility cannot exceed the given generator capacity 
+@constraint(dispatch, availability[g in G, t in T], y[g, t] <= avail[g,t]*x[g]) 
+
+#sum of production and non-served energy must equal to the demand
+@constraint(dispatch, load[t in T], sum(y[:, t])+ sum(nse[t]) == demand[t]) 
 
 
 ```
@@ -82,25 +92,43 @@ avail[6, :]  = solar_cf;
 ```julia
 set_silent(dispatch)
 optimize!(dispatch)
-objective_value(dispatch)
 ```
 
 ## Problem 1.5
 ```julia
-generation = [sum(value.(y).data[g,:].*hours) for g in G]
-results = DataFrame("Name" => generators, "Capacity (MW)" => value.(x).data, "Dispatched Power (MW)" => generation)
+#table of how much the utility should build of each type of generator
+results = DataFrame("Name" => generators, "Capacity" => value.(x).data)
+#total cost
+cost = objective_value(dispatch)
+round(cost; sigdigits = 5)
+value.(nse).data #non-served energy
 ```
+The utility should build 0 Geothermal plant type, 0 coal plant type, 1704 of CCGT, 881 of CT, 1238 of wind, and 2729 of solar.
+The total cost of this combined plant type is 9.1214 hundred million dollars.
+The non-served energy is 0.
+
 ## Problem 1.6
 ```julia
 generation = value.(y).data
+
 plot(generation', 
-label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", 
-color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, size = (700,700), left_margin=5mm, bottom_margin=5mm, legend = :topright, tick_size=10, guidefontsize=10)
-areaplot(generation', label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :topright, legendfontsize = 8)
+label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
+color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, 
+left_margin=5mm, bottom_margin=5mm, legendfontsize = 8, legend = :outertopright, tick_size=10, guidefontsize=10)
+
+areaplot(generation', label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
+color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :outertopright, legendfontsize = 8)
+
 plot!(demand, color=:red, label = "demand", linestyle = :dash, linewidth = 3)
 ```
 Takeaways: 
-The energy production from solar generators are the highest during middle of the day
+The plot suggests that the majority of the electricity production from hour 0 to hour 7.5 comes from CCGT, followed by wind generator, 
+and then the CT generators. No other types of generator are producing elecriticy from hour 0 to hour 6. Starting from hour 6, solar power 
+generator becomes the major electricity producer until hour 17.5, where wind, CCGT, and CT together produce more than solar generator does
+at the time. From hour 17.5 to hour 24, CCGT is the main elecriticy generator.
+This is reasonable because solar generator is working the most when there after sunrise and before sunset, and since solar generator has 0 
+operation cost, it is best to use more of solar generator if our goal is to minimize the cost.
+Furthermore, the energy production from solar generators is the highest during middle of the day, which is reflected by the plot.
 
 # Problem 2
 ## Problem 2.1
@@ -114,33 +142,70 @@ We now need to consider the CO2 emission, which the NY State legislative sets th
 ```julia
 set_silent(dispatch)
 optimize!(dispatch)
-objective_value(dispatch)
 ```
 ## Problem 2.3
 ```julia
-generation = [sum(value.(y).data[g,:].*hours) for g in G]
-results = DataFrame("Name" => generators, "Capacity (MW)" => value.(x).data, "Dispatched Power (MW)" => generation)
+#table of how much the utility should build of each type of generator
+results = DataFrame("Name" => generators, "Capacity" => value.(x).data)
+#total cost considering CO2 emission limit
+cost_CO2 = objective_value(dispatch) 
+round(cost_CO2; sigdigits = 5)
 ```
+The utility should build 1029 Geothermal plant type, 0 coal plant type, 1185 of CCGT, 444 of CT, 1676 of wind, and 2073 of solar.
+The total cost of this combined plant type is 1.0659 thousand million dollars.
+
 ## Problem 2.4
 ```julia
 generation = value.(y).data
 plot!(generation', 
 label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
-color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, size = (700,700), left_margin=5mm, bottom_margin=5mm, legend = :topright, legendfontsize=8, tick_size=10, guidefontsize=10)
-areaplot(generation', label = permutedims(generators), xlabel = "Time", ylabel = "Generated Electricity (MW)", color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :topright, legendfontsize=8)
+color_palette = :tol_muted, thickness_scaling = 2, linewidth = 2, left_margin=5mm, bottom_margin=5mm, 
+legend = :outertopright, legendfontsize=8, tick_size=10, guidefontsize=10)
+areaplot(generation', label = permutedims(generators), xlabel = "Hour", ylabel = "Generated Electricity (MW)", 
+color_palette = :tol_muted, thickness_scaling = 1.45, grid = false, legend = :outertopright, legendfontsize=8)
 plot!(demand, color=:red, label = "demand", linestyle = :dash, linewidth = 3)
 ```
+The plot suggests that geothermal electricy generator is consistently generating over 500 MW of electricity over the duration of a day. 
+From hour 0 to hour 7.5, geothermal and CCGT make up the most of electricity generation. Solar energy production remains one of the main producer from 
+hour 7.5 to hour 15, with the same reasoning that solar energy production tends to be the greatest (plant relies on it more) after sunrise and before sunset.
+Since geothermal energy emits 0 tons of CO2 and has operation cost of 0 dollars, it is reasonable to incorporate it into the electricity generation
+process if our goals are to minimize the cost with constraints that our CO2 emission meets the regulated standard.
 
 ## Problem 2.5
 ```julia
-@constraint(dispatch, CO2, sum(co2_emisssions*y)<= ((1.5*(10^6) + 1000)/365)) #CO2 emission of all generators must not exceed limit of 1.5 Mt/year
-set_silent(dispatch)
-optimize!(dispatch)
-objective_value(dispatch)
+dispatch_CO2addition = Model(HiGHS.Optimizer)
+generators = ["geothermal", "coal", "CCGT", "CT", "wind", "solar"]
 
-generation = [sum(value.(y).data[g,:].*hours) for g in G]
-results = DataFrame("Name" => generators, "Capacity (MW)" => value.(x).data, "Dispatched Power (MW)" => generation)
+G = 1:length(generators)
+T = 1:length(hours)
+
+@variable(dispatch_CO2addition, x[G] >= 0) #capacity as a function of type of generator G
+@variable(dispatch_CO2addition, y[G,T] >= 0) #production as a function of type of generator G and time T 
+@variable(dispatch_CO2addition, nse[T] >= 0) #non-served energy as a function of time
+
+@objective(dispatch_CO2addition, Min, sum(investment_cost.*x) + 
+sum(0*y[1,:] + 22*y[2,:] + 35*y[3,:] + 45*y[4,:] + 0*y[5,:] + 0*y[6,:])*365 + 1000*sum(nse)*365)
+
+#capacity availbility cannot exceed the given generator capacity 
+@constraint(dispatch_CO2addition, availability[g in G, t in T], y[g, t] <= avail[g,t]*x[g]) 
+
+#sum of production and non-served energy must equal to the demand
+@constraint(dispatch_CO2addition, load[t in T], sum(y[:, t])+ sum(nse[t]) == demand[t]) 
+
+#CO2 emission of all generators must not exceed limit of 1.5 Mt + 1000t/year
+@constraint(dispatch_CO2addition, CO2_addition, sum(co2_emissions.*y)<= ((1.5*(10^6) + 1000)/365)) 
+
+set_silent(dispatch_CO2addition)
+optimize!(dispatch_CO2addition)
+
+#total cost
+objective_value(dispatch_CO2addition)
+cost_CO2_addition = objective_value(dispatch_CO2addition)
+round(cost_CO2_addition; sigdigits = 5)
 ```
+The total cost for allowing for an additional 1000tCO2/yr is 1.0658 thousand millian dollars.
+The difference in value to the utility is (1.0659 - 1.0658) thousand millian dollars.
 
 # References
+Referenced Lecture 11, 13, 14; consulted Prof. Srikrishnan and Katrina Chen 
 
